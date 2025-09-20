@@ -6,16 +6,20 @@ output: html_document
 
 ## Name
 
-Please enter your name here.
+Arjun Amitabh Kumar
 
 ### Setup
 
 Read in the data with `read_csv()` and store the data as an R object named `dataset`. Check the data to make sure all of the expected observations and variables are there.
 
 
-```{r}
-## Load the data and any necessary packages here.
-
+```{r, echo=TRUE}
+library(tidyverse)
+library(broom)
+library(ggplot2)
+library(kableExtra)
+library(dplyr)
+maacs <- read.csv("maacs.csv.gz")
 ```
 
 ## Part 1
@@ -30,9 +34,13 @@ NOTE: In order to write this function, you will need to translate the statement 
 
 NOTE: For this part, do not use any plots.
 
-```{r}
-## Write your function here
+```{r, echo=TRUE}
+check_fev1_increases_with_age <- function(d){
+  c <- coef(summary(lm(fev1 ~ age, d, na.action = na.omit)))[2,]
+  c[1] > 0 && c[4] < .05
+}
 
+check_fev1_increases_with_age(maacs)
 ```
 
 
@@ -42,14 +50,13 @@ Fit a linear regression model with FEV1 as the outcome and age as a predictor.
 
 How much does FEV1 change for a 1-year increase in the child's age? 
 
-```{r}
-## Add your code here
-
+```{r, echo=TRUE}
+m <- lm(fev1 ~ age, maacs)
+coef(m)["age"]
+confint(m)["age", ]
 ```
 
-
-Write your data analysis statement interpreting the regression model here:
-
+Each additional year of age is associated with around a 0.171 L increase in FEV1 (95% Confidence Interval: 0.149 to 0.193 L) in this sample, based off linear regression of FEV1 on age.
 
 
 ## Part 3
@@ -63,18 +70,28 @@ NOTE:
 * Do not use the code you write in Part 1 as a supporting premise
 
 ```{r}
-## Add your code here
+# 1) Older vs younger halves: mean FEV1 + t-test
+maacs2 <- na.omit(maacs[, c("fev1","age")])
+maacs2$grp <- ifelse(maacs2$age <= median(maacs2$age), "younger","older")
+aggregate(fev1 ~ grp, maacs2, mean)
+t.test(fev1 ~ grp, data = maacs2)
 
+# 2) Correlation between age and FEV1
+cor.test(maacs2$age, maacs2$fev1, method = "pearson")
+
+# 3) Plot: FEV1 vs age with fitted line
+library(ggplot2)
+ggplot(maacs2, aes(age, fev1)) +
+  geom_point(alpha = 0.6) +
+  geom_smooth(method = "lm", se = TRUE) +
+  labs(x = "Age (years)", y = "FEV1 (L)", title = "FEV1 vs Age")
 ```
 
+1. The older half has a higher average FEV1 than the younger half (2.606 L vs. 1.391). The difference is large and statistically significant (Welch t-value approximately 12.96, and p-value is below 0.0001; 95% CI: 1.03 to 1.40L)
 
-Write the three supporting premise statements here:
+2. Age and FEV1 are strongly positively correlated ( r approximately 0.8, 95% CI: 0.737 to 0.858; t approximately 15.58 with p < 0.001).
 
-1. 
-
-2. 
-
-3. 
+3. The scatterplot of FEV1 versus age shows us a clear upwards trend with a positive fitted regression line, underscoring higher FEV1 at older age ranges.
 
 
 ## Part 4
@@ -89,20 +106,49 @@ For statements involving plots, instead of returning `TRUE` or `FALSE`, you func
 
 
 ```{r}
-## Function for supporting premise statement 1
+# Premise 1
+premise1_older_half_higher <- function(dataset){
+  d <- na.omit(dataset[, c("fev1","age")])
+  g <- ifelse(d$age <= median(d$age), "younger", "older")
+  tt <- t.test(d$fev1 ~ g)
+  mean(d$fev1[g=="older"]) > mean(d$fev1[g=="younger"]) && tt$p.value < .05
+}
 
+premise1_older_half_higher(maacs)
 ```
 
 
 ```{r}
-## Function for supporting premise statement 2
+# Premise 2
+premise2_pos_corr <- function(dataset){
+  d <- na.omit(dataset[, c("fev1","age")])
+  ct <- cor.test(d$age, d$fev1, method = "pearson")
+  (ct$estimate > 0) && (ct$p.value < .05)
+}
 
+premise2_pos_corr(maacs)
 ```
 
 
 ```{r}
-## Function for supporting premise statement 3
+premise3_plot_with_hypo <- function(dataset, seed = 375){
+  d <- na.omit(dataset[, c("fev1","age")])
+  print(ggplot2::ggplot(d, ggplot2::aes(age, fev1)) +
+          ggplot2::geom_point(alpha=.6) +
+          ggplot2::geom_smooth(method="lm", se=TRUE) +
+          ggplot2::labs(title="Actual: FEV1 vs Age", x="Age (years)", y="FEV1 (L)"))
+  set.seed(seed)
+  a <- seq(min(d$age), max(d$age), length.out = max(100, nrow(d)))
+  y <- 1 + 0.12*a + stats::rnorm(length(a), 0, 0.25)
+  s <- data.frame(age=a, fev1=y)
+  print(ggplot2::ggplot(s, ggplot2::aes(age, fev1)) +
+          ggplot2::geom_point(alpha=.6) +
+          ggplot2::geom_smooth(method="lm", se=TRUE) +
+          ggplot2::labs(title="Hypothetical (True): Upward Trend", x="Age (years)", y="FEV1 (L)"))
+  invisible(NULL)
+}
 
+premise3_plot_with_hypo(maacs)
 ```
 
 Execute each of your function and show that the produce the expected output.
@@ -117,5 +163,37 @@ Describe one alternative to the primary statement "FEV1 values in children are h
 Create a fault tree for the alternative outcome describing how the alternative outcome could be realized in the data even if the primary statement were true.
 
 Your fault tree should be created as a separate image and does not need to be created in R. Upload the image of the fault tree to Canvas.
+
+```{r}
+dir.create("docs/figs", recursive = TRUE, showWarnings = FALSE)
+
+dot <- "
+digraph ft {
+  graph [rankdir=TB, splines=ortho, nodesep=0.25, ranksep=0.4]
+  node  [shape=box, style=rounded, fontname=Helvetica, fontsize=10, width=2.4]
+  edge  [arrowhead=none]
+  A [label='Observed: flat/negative age–FEV1']
+  B [label='Confounding / Scaling (OR)']
+  C [label='Selection / Sampling Bias (OR)']
+  D [label='Measurement / Quality (OR)']
+  B1 [label='No size/height adjustment']
+  B2 [label='Severity/meds differ by age']
+  C1 [label='Severe older cases enriched']
+  C2 [label='Missing-not-at-random by age']
+  D1 [label='Technique/timing differs by age']
+  D2 [label='Calibration / unit errors']
+  A -> {B C D}
+  B -> {B1 B2}
+  C -> {C1 C2}
+  D -> {D1 D2}
+}
+"
+
+g <- DiagrammeR::grViz(dot)
+svg_txt <- DiagrammeRsvg::export_svg(g)
+rsvg::rsvg_png(charToRaw(svg_txt), "docs/figs/fault_tree_depth3.png", width = 800, height = 1100)
+```
+
+
 
 
